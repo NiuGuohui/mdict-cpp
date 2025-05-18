@@ -1,9 +1,10 @@
-# Set the project name
-CMAKE_POLICY(SET CMP0048 NEW)
-PROJECT(MDictCpp VERSION 1.0.0)
-
 # Set the minimum required CMake version
 CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
+
+PROJECT(MDictCpp VERSION 1.0.0)
+# Set the project name
+CMAKE_POLICY(SET CMP0048 NEW)
+
 
 # C++ standard
 set(CMAKE_CXX_STANDARD 14)
@@ -34,41 +35,3 @@ target_link_libraries(mdict PRIVATE miniz)
 # Executable target: mydict (for development/testing purposes only)
 ADD_EXECUTABLE(mydict mdict.cc binutils.cc xmlutils.cc ripemd128.c adler32.cc mdict_extern.cc mdict_extern_test.cc)
 target_link_libraries(mydict PRIVATE miniz)
-
-# Test executables
-ADD_EXECUTABLE(adler32_test adler32.cc adler32_test.cc binutils.cc)
-ADD_EXECUTABLE(ripemd128_test ripemd128_test.c ripemd128.c)
-ADD_EXECUTABLE(xmlutils_test xmlutils.cc xmlutils_test.cc)
-ADD_EXECUTABLE(binutils_test binutils.cc binutils_test.cc)
-
-# Define installation behavior for the mdict library
-OPTION(INSTALL_TO_SYSTEM "Install the mdict library to the system" OFF)
-
-if(INSTALL_TO_SYSTEM)
-    # Detect operating system and set library installation paths accordingly
-    if(UNIX AND NOT APPLE)
-        # For Linux
-        set(LIB_INSTALL_DIR "/usr/lib")
-        set(INCLUDE_INSTALL_DIR "/usr/include")
-    elseif(APPLE)
-        # For macOS
-        set(LIB_INSTALL_DIR "/usr/local/lib")
-        set(INCLUDE_INSTALL_DIR "/usr/local/include")
-    elseif(${CMAKE_SYSTEM_NAME} MATCHES ".*BSD")
-        # For BSD systems
-        set(LIB_INSTALL_DIR "/usr/local/lib")
-        set(INCLUDE_INSTALL_DIR "/usr/local/include")
-    else()
-        message(FATAL_ERROR "Unsupported operating system for installation")
-    endif()
-
-    # Install the mdict library
-    install(TARGETS mdict
-        ARCHIVE DESTINATION ${LIB_INSTALL_DIR}
-        LIBRARY DESTINATION ${LIB_INSTALL_DIR}
-    )
-    # Install headers
-    install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include/mdict-cpp
-        FILES_MATCHING PATTERN "*.h")
-    
-endif()
