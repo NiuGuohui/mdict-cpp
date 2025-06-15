@@ -1,99 +1,238 @@
-//
-// Created by 陈权 on 2019/2/7.
-//
-
 #include "mdict_extern.h"
 
 #include <sys/time.h>
+#include <unistd.h>  // for getopt
 
-#include <cstring>
+#include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
+#include <functional>
 #include <iostream>
 #include <string>
 
 typedef long long int64;
 
+// Helper function to check if a string ends with a specific suffix
+bool ends_with(const std::string &str, const std::string &suffix) {
+  if (str.length() < suffix.length()) {
+    return false;
+  }
+  return str.compare(str.length() - suffix.length(), suffix.length(), suffix) ==
+         0;
+}
+
 class Timetool {
-public:
-    static int64 getSystemTime() {
-        timeval tv;
-        gettimeofday(&tv, NULL);
-        int64 t = tv.tv_sec;
-        t *= 1000;
-        t += tv.tv_usec / 1000;
-        return t;
-    }
+ public:
+  static int64 getSystemTime() {
+    timeval tv;
+    gettimeofday(&tv, NULL);
+    int64 t = tv.tv_sec;
+    t *= 1000;
+    t += tv.tv_usec / 1000;
+    return t;
+  }
 };
 
+void for_each_key(void *dict, std::function<void(simple_key_item *)> on_key) {
+  uint64_t len = 0;
+  simple_key_item **list = mdict_keylist(dict, &len);
+  std::cerr << "[for_each_key] got len=" << len << "\n";  // diagnostic
+
+  if (!list || len == 0) {
+    std::cerr << "[for_each_key] nothing to do\n";
+    return;
+  }
+
+  for (unsigned long i = 0; i < len; ++i) {
+    if (!list[i]) {
+      std::cerr << "[for_each_key] skipping null at i=" << i << "\n";
+      continue;
+    }
+    on_key(list[i]);
+  }
+  free_simple_key_list(list, len);
+}
+
+void print_usage(const char *program_name) {
+  std::cout << "Usage: " << program_name
+            << " [options] <dictionary_file> [query_key]\n"
+            << "Options:\n"
+            << "  -l, --list        List all keys in the dictionary\n"
+            << "  -h, --help        Display this help message\n"
+            << "  -v, --verbose     Enable verbose output\n"
+            << "  -x, --hex         Output in hex format for MDD files\n"
+            << "\n"
+            << "Examples:\n"
+            << "  " << program_name
+            << " dictionary.mdx word        # Look up a word\n"
+            << "  " << program_name
+            << " -l dictionary.mdx          # List all keys\n"
+            << "  " << program_name
+            << " -x dictionary.mdd image    # Get image in hex format\n";
+}
+
+bool is_mdd_file(const std::string &filename) {
+  std::string ext;
+  size_t dot_pos = filename.find_last_of('.');
+  if (dot_pos != std::string::npos) {
+    ext = filename.substr(dot_pos);
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+  }
+  return ext == ".mdd";
+}
+
 int main(int argc, char **argv) {
-    std::cout << "arg count: " << argc << std::endl;
-    std::cout << "executable file name: " << argv[0] << std::endl;
+  bool list_keys = false;
+  bool verbose = false;
+  bool hex_output = false;
+  int opt;
 
-    if (argc < 3) {
-        std::cout << "please specific mdx file" << std::endl;
-        return -1;
+  std::string definition;
+  std::string definition_hex;
+
+  // Parse command line options
+  while ((opt = getopt(argc, argv, "lhvx")) != -1) {
+    switch (opt) {
+      case 'l':
+        list_keys = true;
+        break;
+      case 'v':
+        verbose = true;
+        break;
+      case 'x':
+        hex_output = true;
+        break;
+      case 'h':
+        print_usage(argv[0]);
+        return 0;
+      default:
+        print_usage(argv[0]);
+        return 1;
     }
-    if (strcmp(argv[1], "") == 0) {
-        std::cout << "please specific mdx file" << std::endl;
-        return -1;
+  }
+
+  // Check remaining arguments
+  if (optind >= argc) {
+    std::cerr << "Error: Dictionary file is required\n";
+    print_usage(argv[0]);
+    return 1;
+  }
+
+  const char *dict_file = argv[optind++];
+  const char *query_key = nullptr;
+
+  // If not listing keys, require a query key
+  if (!list_keys) {
+    if (optind >= argc) {
+      std::cerr << "Error: Query key is required when not listing keys\n";
+      print_usage(argv[0]);
+      return 1;
     }
-    std::cout << argv[1] << std::endl;
+    query_key = argv[optind];
+  }
 
-    if (strcmp(argv[2], "") == 0) {
-        std::cout << "please specific word" << std::endl;
-        return -1;
+  if (verbose) {
+    std::cout << "Dictionary file: " << dict_file << std::endl;
+    if (query_key) {
+      std::cout << "Query key: " << query_key << std::endl;
+    }
+  }
+
+  int64 t1 = Timetool::getSystemTime();
+  void *dict = mdict_init(dict_file);
+
+  int64 t2 = Timetool::getSystemTime();
+  if (verbose) {
+    std::cout << "Init cost time: " << t2 - t1 << "ms" << std::endl;
+  }
+
+  bool is_mdd = is_mdd_file(dict_file);
+
+  if (list_keys) {
+    uint64_t key_list_len = 0;
+    simple_key_item **key_list_result = mdict_keylist(dict, &key_list_len);
+
+    if (key_list_len == 0) {
+      std::cerr << "No keys in dictionary\n";
+      mdict_destory(dict);
+      return 1;
     }
 
-    int64 t1 = Timetool::getSystemTime();
-    void *dict = mdict_init(argv[1]);
+    std::cout << "Total keys: " << key_list_len << "\n";
+    if (verbose) {
+      std::cout << "File type: " << (is_mdd ? "MDD" : "MDX") << "\n\n";
+    }
 
-    int64 t2 = Timetool::getSystemTime();
-    std::cout << "init cost time: " << t2 - t1 << "ms" << std::endl;
+    for (unsigned long i = 0; i < key_list_len; ++i) {
+      simple_key_item *key = key_list_result[i];
+      if (!key || !key->key_word) continue;
 
-    char *result[0];
-    mdict_lookup(dict, argv[2], result);
-    std::string difinition(*result);
-    std::cout << difinition << std::endl;
+      std::string original_str = key->key_word;
 
-    int64 t3 = Timetool::getSystemTime();
-    std::cout << "lookup cost time: " << t3 - t2 << " ms" << std::endl;
-
-
-    unsigned long key_list_len = 0;
-
-    simple_key_item** key_list_result = mdict_keylist(dict, &key_list_len);
-    std::cout << "key list length: " << key_list_len << std::endl;
-
-    auto key0 = key_list_result[0];
-    auto keylen = key_list_result[key_list_len-1];
-
-    std::cout << "key list[0] word: "
-              << key0->key_word << ":"
-              << key0->record_start
-              << std::endl;
-
-    std::cout << "key list[len-1] word: "
-              << keylen->key_word << ":"
-              << keylen->record_start
-              << std::endl;
-
-
-    char *result_len_1[0];
-
-    mdict_parse_definition(dict,keylen->key_word, keylen->record_start, result_len_1);
-
-    std::cout << "key list[len-1] def: "
-              << (*result_len_1)
-              << std::endl;
+      if (verbose) {
+        std::cout << "<================ start key index :[" << i
+                  << "] =================>\n";
+        std::cout << "Original string: " << original_str << "\n";
+        std::cout << (is_mdd ? "Decoded (MDD): " : "Key (MDX): ")
+                  << original_str << "\n";
+        std::cout << "<================   end key index :[" << i
+                  << "] =================>\n";
+      } else {
+        std::cout << original_str << "\n";
+      }
+    }
 
     free_simple_key_list(key_list_result, key_list_len);
+  } else {
+    char *result[0];
+    if (!is_mdd) {
+      mdict_lookup(dict, query_key, result);
+    } else {
+      // For MDD files, use hex encoding if -x option is specified, otherwise
+      // use base64
+      mdict_encoding_t encoding =
+          hex_output ? MDICT_ENCODING_HEX : MDICT_ENCODING_BASE64;
+      mdict_locate(dict, query_key, result, encoding);
+    }
+    std::string definition(*result);
+    if (verbose) {
+      std::cout << ">>[definition start] [" << query_key
+                << "] length: " << definition.length() << " >>" << std::endl;
+    }
 
-    if (*result_len_1 != nullptr) {
-        free(*result_len_1);
+    std::string ext;
+    const char *dot = strrchr(query_key, '.');
+    if (dot && *(dot + 1)) {
+      ext = dot + 1;
+      std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     }
-    mdict_destory(dict);
-    if (*result != nullptr) {
-        free(*result);
+
+    std::string mime_type = mime_detect(query_key);
+    if (mime_type != "application/octet-stream") {
+      if (is_mdd && hex_output) {
+        std::cout << definition
+                  << std::endl;  // Output raw hex for MDD with -x option
+      } else {
+        std::cout << "data:" << mime_type << ";base64," << definition
+                  << std::endl;
+      }
+    } else {
+      std::cout << "query key:" << query_key << " | def:" << definition
+                << std::endl;
     }
+
+    if (verbose) {
+      std::cout << "<<[definition   end] [" << query_key << "]" << " <<"
+                << std::endl;
+    }
+
+    int64 t3 = Timetool::getSystemTime();
+    if (verbose) {
+      std::cout << "Lookup cost time: " << t3 - t2 << " ms" << std::endl;
+    }
+  }
+
+  mdict_destory(dict);
+  return 0;
 }

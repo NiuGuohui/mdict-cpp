@@ -52,3 +52,14 @@ target
 dicts
 *.pyc
 !tests/testdict/testdict.mdx
+
+*~
+*#
+.#*
+*rej
+*orig
+pinentry*
+*.hi
+*.o
+*.a
+.cache/
