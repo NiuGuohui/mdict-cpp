@@ -33,7 +33,7 @@
 
 # output directory
 bin
-cmake-build-debug
+cmake-build-*
 lib
 
 # idea
