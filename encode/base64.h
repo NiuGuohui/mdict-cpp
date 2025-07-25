@@ -9,6 +9,10 @@
 #include "deps/turbobase64/turbob64.h"
 #include <cmath>
 
+#ifndef tb64dec
+#define tb64dec tb64sdec
+#endif
+
 constexpr char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 std::vector<uint8_t> hex_to_binary(const std::string& hex_str) {
